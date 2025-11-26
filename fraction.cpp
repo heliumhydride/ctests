@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <limits>
 #include <math.h>
+#include <assert.h>
 
 long gcd(long n, long m) {
   while(n != m) {
@@ -21,6 +22,7 @@ class Fraction {
 
   public:
     Fraction(long a, long b) {
+      assert(b > 0 && "!!! Le diviseur doit être strictement positif !!!");
       numerateur = a;
       denominateur = b;
     }
@@ -84,6 +86,13 @@ class Fraction {
       );
     }
 
+    int operator==(Fraction &f) {
+      long a,b,c,d;
+      a = this->numerateur; b = this->denominateur;
+      c = f.numerateur; d = f.denominateur;
+      return (int)((a*d) == (b*c));
+    }
+
     void affiche(void) {
       printf("%ld/%ld", this->numerateur, this->denominateur);
     }
@@ -94,11 +103,12 @@ class Fraction {
 int main(void) {
   Fraction f1(1,2);
   Fraction f2(1,3);
-  //(f1*f2).affiche();
-  //(f1/(long)2).affiche();
-  //Fraction(18,24).simplifie().affiche();
-  //(f1+f2).affiche();
-  //printf("\n%f\n", (float)Fraction(1,0));
-  Fraction(28,-4).simplifie().affiche();
+  // (f1*f2).affiche();
+  // (f1/(long)2).affiche();
+  // Fraction(18,24).simplifie().affiche();
+  // (f1+f2).affiche();
+  // printf("\n%f\n", (float)Fraction(1,0));
+  // Fraction(28,-4).simplifie().affiche();
+  printf("%d\n", Fraction(1,3) == Fraction(2,4));
   return 0;
 }
