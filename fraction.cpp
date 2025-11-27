@@ -38,13 +38,25 @@ class Fraction {
     }
 
     // == n(a/b)
+    /*
     Fraction operator*(long n) {
       return Fraction(this->numerateur * n, this->denominateur);
     }
+    */
+    template <class T>
+    Fraction operator*(T n) {
+      return Fraction(this->numerateur * (long)n, this->denominateur);
+    }
 
     // == (a/b)/n
+    /*
     Fraction operator/(long n) {
       return Fraction(this->numerateur, this->denominateur * n);
+    }
+    */
+    template <class T>
+    Fraction operator/(T n) {
+      return Fraction(this->numerateur, this->denominateur * (long)n);
     }
 
     // == (a/b)^(-1)
@@ -104,11 +116,13 @@ int main(void) {
   Fraction f1(1,2);
   Fraction f2(1,3);
   // (f1*f2).affiche();
-  // (f1/(long)2).affiche();
   // Fraction(18,24).simplifie().affiche();
   // (f1+f2).affiche();
   // printf("\n%f\n", (float)Fraction(1,0));
   // Fraction(28,-4).simplifie().affiche();
-  printf("%d\n", Fraction(1,3) == Fraction(2,4));
+  // printf("%d\n", Fraction(1,3) == Fraction(2,4));
+  (f1*2).affiche(); printf("\n");
+  (f1/2).affiche(); printf("\n");
+  ((Fraction){1,2}).affiche();
   return 0;
 }
