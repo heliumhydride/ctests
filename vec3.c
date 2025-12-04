@@ -75,17 +75,28 @@ bool vec3_iseq(vec3* u, vec3* v) {
   return (u->x == v->x) && (u->y == v->y) && (u->z == v->z);
 }
 
-void vec3_xprod(vec3* u, vec3* v);
-double vec3_angle(vec3* u, vec3* v);
+void vec3_xprod(vec3* u, vec3* v, vec3* dest);
+// a x b = ||a|| * ||b|| * sin(theta) n
+
+double vec3_angle(vec3* u, vec3* v) {
+  return acos(vec3_dot(u, v) / (vec3_mag(u) * vec3_mag(v)));
+}
+
 void vec3_project(vec3* u, vec3* dest);
 
-int main(void) {
-  vec3 u,v,w;
-  vec3_init(1, 3, -5, &u);
-  vec3_copy(&v, &u);
-  vec3_init(3, 2, -2, &w);
+// non vector funcs
+double to_deg(double theta) {
+  return theta * 180 / M_PI;
+}
 
-  printf("%b %b\n", vec3_iseq(&u, &v), vec3_iseq(&u, &w));
+int main(void) {
+  vec3 u,v;
+  vec3_init(1, 3, -5, &u);
+  vec3_init(3, 2, -2, &v);
+  
+  printf("u = "); vec3_disp(&u); printf("\n");
+  printf("v = "); vec3_disp(&v); printf("\n");
+  printf("angle between u & v = %.2lf°\n", to_deg(vec3_angle(&u, &v)));
 
   return 0;
 }
