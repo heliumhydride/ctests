@@ -5,8 +5,6 @@
 #include <math.h>
 #include <stdbool.h>
 
-#define EPSILON 1e-5
-
 typedef struct {
   double x,y,z;
 } vec3;
@@ -89,7 +87,11 @@ double vec3_angle(vec3* u, vec3* v) {
   return acos(vec3_dot(u, v) / (vec3_mag(u) * vec3_mag(v)));
 }
 
-void vec3_project(vec3* u, vec3* dest);
+void vec3_project(vec3* u, vec3* v, vec3* dest) {
+  double a = vec3_dot(u, v);
+  double b = vec3_dot(v, v);
+  vec3_scale(v, a/b, dest);
+}
 
 // non vector funcs
 double to_deg(double theta) {
@@ -100,27 +102,11 @@ int main(void) {
   vec3 u,v,w;
   vec3_init(1, 3, -5, &u);
   vec3_init(3, 2, -2, &v);
-  vec3_xprod(&u, &v, &w);
-
-  vec3 i,j,k;
-  vec3_init(1, 0, 0, &i);
-  vec3_init(0, 1, 0, &j);
-  vec3_xprod(&i, &j, &k);
+  vec3_project(&u, &v, &w);
 
   printf("u = "); vec3_disp(&u); printf("\n");
   printf("v = "); vec3_disp(&v); printf("\n");
-  printf("u x v = "); vec3_disp(&w); printf("\n");
-
-  printf("i = "); vec3_disp(&i); printf("\n");
-  printf("j = "); vec3_disp(&j); printf("\n");
-  printf("k = "); vec3_disp(&k); printf("\n");
-
-  // check for anti-commutativity   a x b = -(b x a)
-  vec3 new_k;
-  vec3_xprod(&j, &i, &new_k);
-  vec3_scale(&new_k, -1, &new_k);
-  printf("new_k = "); vec3_disp(&new_k); printf("\n");
-  printf("%b\n", vec3_iseq(&k, &new_k));
+  printf("proj u on v = "); vec3_disp(&w); printf("\n");
 
   return 0;
 }
