@@ -75,7 +75,14 @@ bool vec3_iseq(vec3* u, vec3* v) {
   return (u->x == v->x) && (u->y == v->y) && (u->z == v->z);
 }
 
-void vec3_xprod(vec3* u, vec3* v, vec3* dest);
+void vec3_xprod(vec3* u, vec3* v, vec3* dest) {
+  vec3_init(
+    u->y * v->z - u->z * v->y,
+    u->z * v->x - u->x * v->z,
+    u->x * v->y - u->y * v->x,
+    dest
+  );
+}
 // a x b = ||a|| * ||b|| * sin(theta) n
 
 double vec3_angle(vec3* u, vec3* v) {
@@ -90,13 +97,30 @@ double to_deg(double theta) {
 }
 
 int main(void) {
-  vec3 u,v;
+  vec3 u,v,w;
   vec3_init(1, 3, -5, &u);
   vec3_init(3, 2, -2, &v);
-  
+  vec3_xprod(&u, &v, &w);
+
+  vec3 i,j,k;
+  vec3_init(1, 0, 0, &i);
+  vec3_init(0, 1, 0, &j);
+  vec3_xprod(&i, &j, &k);
+
   printf("u = "); vec3_disp(&u); printf("\n");
   printf("v = "); vec3_disp(&v); printf("\n");
-  printf("angle between u & v = %.2lf°\n", to_deg(vec3_angle(&u, &v)));
+  printf("u x v = "); vec3_disp(&w); printf("\n");
+
+  printf("i = "); vec3_disp(&i); printf("\n");
+  printf("j = "); vec3_disp(&j); printf("\n");
+  printf("k = "); vec3_disp(&k); printf("\n");
+
+  // check for anti-commutativity   a x b = -(b x a)
+  vec3 new_k;
+  vec3_xprod(&j, &i, &new_k);
+  vec3_scale(&new_k, -1, &new_k);
+  printf("new_k = "); vec3_disp(&new_k); printf("\n");
+  printf("%b\n", vec3_iseq(&k, &new_k));
 
   return 0;
 }
