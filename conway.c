@@ -8,24 +8,44 @@
 
         Optionally pass -DNO_UTF8 and -DNO_COLOR
 
+    NOTES REGARDING WINDOWS
+        It doesn't work yet, but when it will:
+        To use UTF-8 characters in the CMD, run:
+            chcp 65001
+            ^^^ Could be buggy on Windows >=7 <10
+
+        Also you'll need a console host that supports ANSI escape codes.
+        So either use ANSICON to extend the system conhost, or switch to ConEmu, Windows Terminal, ...
+
     TODOS
-        TODO allow loading board from a WIDTHxHEIGHT .ppm image file
-        TODO    maybe set width/height from loading the board ?
-        TODO    supply a default board if none is provided ?
-        TODO keysbinds
-        TODO    allow changing speed by pressing +/- on kb (like cube.c)
-        TODO    play/pause simulation on spacebar
+        TODO BUG [5] slowing down simulation speed slows down everything else
+        TODO FEATURE allow loading board from a WIDTHxHEIGHT .ppm image file
+        TODO    [2] maybe set width/height from loading the board ?
+        TODO    [3] support ppms with maxval > 255
+        TODO FEATURE windows(mingw) support
+        TODO    [1] polling for windows (conio.h)
+        TODO    [4] catch CTRL+C on windows
 
     made with ♡ by heliumhydride
 */
 
+#if defined(_WIN32) && !defined(__CYGWIN__)
+#error "TODO [1] [4]"
+#endif // _WIN32 && !__CYGWIN__
+
 #define _XOPEN_SOURCE 500   // usleep()
+#include <ctype.h>          // isspace()
+#include <poll.h>           // poll()
+#include <signal.h>         // signal()
 #include <stdbool.h>        // bool
+#include <stdlib.h>         // malloc(), free()
 #include <stdint.h>         // uint8_t
-#include <stdio.h>          // putchar(), printf() et al
+#include <stdio.h>          // putchar(), printf(), fopen(), fread(), ...
 #include <string.h>         // memset()
+#include <termios.h>        // tcgetattr(), tcsetattr()
 #include <unistd.h>         // usleep()
 
+// TODO [2]
 #define WIDTH       32
 #define HEIGHT      32
 #define INIT_FPS    15
@@ -64,7 +84,14 @@
     #define UPPER_RIGHT_CORNER "\xe2\x94\x90"
 #endif // NO_UTF8
 
+static bool running = true;
+
 /* Helper functions */
+
+void ctrl_c(int unused) {
+    (void)unused;
+    running = false;
+}
 
 void clear_screen(void)
 {
@@ -85,7 +112,7 @@ void print_lower_separator(void)
     printf(LOWER_RIGHT_CORNER "\n");
 }
 
-size_t count_population(bool board[])
+size_t count_population(const bool board[])
 {
     size_t count = 0;
     for(size_t i = 0; i < (WIDTH*HEIGHT); ++i) {
@@ -94,14 +121,14 @@ size_t count_population(bool board[])
     return count;
 }
 
-bool get_matrix_bc(bool board[], ssize_t x, ssize_t y)    // get data from matrix, with bounds checking
+bool get_matrix_bc(const bool board[], const ssize_t x, const ssize_t y)    // get data from matrix, with bounds checking
 {
     if(x < 0 || x >= WIDTH)  return false;
     if(y < 0 || y >= HEIGHT) return false;
     return board[MATRIX_COORD(x,y)];
 }
 
-int neighbours(bool board[], size_t x, size_t y)
+int neighbours(const bool board[], const size_t x, const size_t y)
 {
     int n = 0;
     n += (int)get_matrix_bc(board, x-1, y-1);
@@ -148,7 +175,7 @@ void update_board(bool board[])
     memcpy(board, new_board, sizeof(bool) * WIDTH * HEIGHT);
 }
 
-void display_board(bool *board)
+void display_board(const bool *board)
 {
     for(size_t y = 0; y < HEIGHT; y+=2) {
         printf(VERTICAL_BAR);
@@ -173,43 +200,149 @@ void display_board(bool *board)
     }
 }
 
-int main(void)
+void print_usage(const char* program)
 {
+    (void)printf("usage: %s board.ppm\n", program);
+    (void)printf("a default is provided in additional_files/conway/default.ppm\n");
+}
+
+int main(int argc, char* argv[])
+{
+    // TODO [4]
+    signal(SIGINT, ctrl_c);
+    signal(SIGTERM, ctrl_c);
+
+    const char* program = argv[0];
+    if(argc < 2) {
+        print_usage(program);
+        return 1;
+    }
+
+    const char* filename = argv[1];
+    FILE* fileptr = fopen(filename, "rb");
+    if(fileptr == NULL) {
+        fprintf(stderr, ANSI_RED "'%s': file not found\n" ANSI_NORM, filename);
+        return 1;
+    }
+    
+    char magic[3];
+    fread(magic, sizeof(*magic), sizeof(magic), fileptr);
+    if((magic[0] != 'P') || (magic[1] != '6') || !isspace(magic[2])) {
+        fprintf(stderr, ANSI_RED "'%s': not a binary PPM formated image\n" ANSI_NORM, filename);
+        return 1;
+    }
+
+    // skip comments because ppm images can have comments
+    int c = getc(fileptr);
+    while(c == '#') {
+        while(getc(fileptr) != '\n');
+        c = getc(fileptr);
+    }
+    ungetc(c, fileptr);
+
+    size_t img_width, img_height;
+    int color_maxval;
+    fscanf(fileptr, "%zu %zu", &img_width, &img_height);
+    fscanf(fileptr, "%d", &color_maxval);
+    if(color_maxval > 255) {
+        fprintf(stderr, "TODO  support maxval > 255\n");
+        return 1;
+    }
+
+    // TODO [2]
+    if((WIDTH != img_width) || (HEIGHT != img_height)) {
+        fprintf(stderr, ANSI_RED "'%zux%zu': incorrect size\n" ANSI_NORM, img_width, img_height);
+        return 1;
+    }
+
+    (void)getc(fileptr);
+    uint8_t* image_data = malloc(img_width * 3 * img_height);
+    if(image_data == NULL) {
+        fprintf(stderr, ANSI_RED "malloc() failed\n" ANSI_NORM);
+        return 1;
+    }
+    fread(image_data, img_width * 3, img_height, fileptr);
+    fclose(fileptr);
+
+    // TODO [3]
     bool board[WIDTH*HEIGHT] = {false};
+    for(size_t i = 0; i < (img_width * img_height); ++i) {
+        if((image_data[i*3] == color_maxval) && (image_data[i*3+1] == color_maxval) && (image_data[i*3+2] == color_maxval)) {
+            board[i] = true;
+        }
+    }
 
-    // initialize a blinker in the center of the display
-    board[MATRIX_COORD(WIDTH/2,HEIGHT/2)] = true;
-    board[MATRIX_COORD(WIDTH/2 - 1,HEIGHT/2)] = true;
-    board[MATRIX_COORD(WIDTH/2 + 1,HEIGHT/2)] = true;
-
-    // create a glider at the top left corner of the display 
-    board[MATRIX_COORD(1,0)] = true;
-    board[MATRIX_COORD(2,1)] = true;
-    board[MATRIX_COORD(0,2)] = true;
-    board[MATRIX_COORD(1,2)] = true;
-    board[MATRIX_COORD(2,2)] = true;
+    free(image_data);
 
     int fps = INIT_FPS;
-    size_t generation = 1;
+    unsigned long generation = 1;
 
-    clear_screen();
-    while(true) {
-        printf("Controls:\n");
-        printf("    SPACE play/pause     +/- control speed      CTRL+C exit\n\n");
-        print_upper_separator();
-        display_board(board);
-        print_lower_separator();
+    /* the following code was stolen from myself (see 'cube.c') */
 
-        putchar('\n');
-        printf("    [" ANSI_BLUE "GENERATION" ANSI_NORM "]    " ANSI_RED "%zu" ANSI_NORM "\n", generation);
-        printf("    [" ANSI_BLUE "POPULATION" ANSI_NORM "]    " ANSI_RED "%zu" ANSI_NORM "\n", count_population(board));
-        printf("    [" ANSI_BLUE "     SPEED" ANSI_NORM "]    " ANSI_RED "%d FPS" ANSI_NORM "\n", fps);
+    struct termios old_tio, new_tio;
+    tcgetattr(STDOUT_FILENO, &old_tio);
+    new_tio = old_tio;
+    new_tio.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDOUT_FILENO, TCSANOW, &new_tio);
 
-        usleep((useconds_t)(1000000/fps));
+    struct pollfd fds[1];
+    fds[0].fd = STDIN_FILENO;
+    fds[0].events = POLLIN;
 
-        clear_screen();
-        update_board(board);
-        ++generation;
+    /* end of code stolen from self */
+
+    running = true;
+    while(running) {
+        int polled = poll(fds, 1, 0);
+        if(polled == -1) {
+            running = false;
+        } else if(polled == 0) {
+            clear_screen();
+            printf("Controls:\n");
+            printf("    SPACE   play/pause  "VERTICAL_BAR"  + - control speed\n");
+            printf("    CTRL+C  exit        "VERTICAL_BAR"  * / control speed (5)\n");
+            print_upper_separator();
+            display_board(board);
+            print_lower_separator();
+
+            putchar('\n');
+            printf(ANSI_BLUE "    GENERATION" ANSI_NORM "  " VERTICAL_BAR "  " ANSI_RED "%lu" ANSI_NORM "\n", generation);
+            printf(ANSI_BLUE "    POPULATION" ANSI_NORM "  " VERTICAL_BAR "  " ANSI_RED "%zu" ANSI_NORM "\n", count_population(board));
+            printf(ANSI_BLUE "         SPEED" ANSI_NORM "  " VERTICAL_BAR "  " ANSI_RED "%d FPS" ANSI_NORM "\n", fps);
+
+            // TODO [5]
+            usleep((useconds_t)(1000000/fps));
+            update_board(board);
+            ++generation;
+        } else {
+            char buf[3] = {0};
+            read(STDIN_FILENO, buf, sizeof(buf));
+            switch(buf[0]) {
+                case '+':
+                    ++fps;
+                    break;
+                case '-':
+                    if(fps > 1) --fps;
+                    break;
+                case '*':
+                    fps += 5;
+                    break;
+                case '/':
+                    if((fps > 1) && (fps <= 5)) fps = 1;
+                    if(fps > 5) fps -= 5;
+                    break;
+                case ' ':
+                    printf(ANSI_RED "                   PAUSED\n" ANSI_NORM);
+                    buf[0] = '\0';
+                    while(buf[0] != ' ') {
+                        read(STDIN_FILENO, buf, sizeof(buf));
+                        usleep((useconds_t)1000);
+                    }
+                    break;
+            }
+        }
     }
+    tcsetattr(STDOUT_FILENO, TCSANOW, &old_tio);
+    puts("\n            ok, goodbye.");
     return 0;
 }
