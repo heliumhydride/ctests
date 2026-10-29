@@ -1,72 +1,52 @@
-#define _XOPEN_SOURCE   600
-#define _POSIX_C_SOURCE 200112L
-
-/// Useful includes
+#include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
-//#include <getopt.h>
 #include <unistd.h>
-#include <string.h>
 
-// ADD TO CONFIG.H
-#define STDIN_MAX 4096
+/*
+    NOTES
+        [1] If we were loading a file >1MB, it's better to allocate the buffer on the heap.
+        [2] If we were loading in text mode it's better to null terminate the whole buffer in case we do string-related operations
+*/
 
-void getline_stdin(char* buf) {
-  fgets(buf, STDIN_MAX, stdin);
+ssize_t get_filesize(FILE* fileptr)
+{
+    if(fileptr == stdin)  return -1;
+    ssize_t filesize;
+    if(fseek(fileptr, 0L, SEEK_END) != 0) return -1;
+    if((filesize = ftell(fileptr)) == -1) return -1;
+    if(fseek(fileptr, 0L, SEEK_SET) != 0) return -1;
+    return filesize;
 }
 
-ssize_t get_filesize(FILE* fileptr) {
-  if(fileptr == stdin)
-    return -1;
-  ssize_t filesize;
-  if(fseek(fileptr, 0L, SEEK_END) != 0)
-    return -1;
-  if((filesize = ftell(fileptr)) == -1)
-    return -1;
-  if(fseek(fileptr, 0L, SEEK_SET) != 0)
-    return -1;
-  return filesize;
-}
+int main(int argc, char* argv[])
+{
+    const char* program = argv[0];
+    if(argc < 2) return 1;
+    const char* filename = argv[1];
 
-int readfile2buffer(FILE* fileptr, char* buf) {
-  ssize_t filesize = get_filesize(fileptr);
-  if(filesize == -1)
-    return -1;
-
-  size_t bytes_read = fread(buf, sizeof(char), filesize, fileptr);
-  if(ferror(fileptr) != 0) {
-    return -1;
-  }
-
-  buf[bytes_read++] = '\0'; // terminate buffer string
-  return 0;
-}
-
-int main(int argc, char* argv[]) {
-  int stdin_mode = 0;
-  if(argc <= 1)
-    stdin_mode = 1;
-  
-  char* buf;
-  if(stdin_mode) {
-    // TODO allow multiline stdin
-    buf = malloc(STDIN_MAX);
-    getline_stdin(buf);
-    printf("%s", buf);
-  } else {
-    FILE* fileptr = fopen(argv[1], "r");
+    FILE* fileptr = fopen(filename, "rb");
     if(fileptr == NULL) {
-      fprintf(stderr, "x --- file '%s' not found\n", argv[1]);
-      return 1;
+        fprintf(stderr, "%s: '%s': could not open file\n", program, filename);
+        return 1;
     }
-    buf = malloc(get_filesize(fileptr));
-    if(readfile2buffer(fileptr, buf) == -1) {
-      fprintf(stderr, "x --- read error\n");
-      return 2;
-    }
-    printf("%s", buf);
+
+    size_t filesize = get_filesize(fileptr);
+    uint8_t buffer[filesize];
+    // [1]
+    // uint8_t* buffer = malloc(filesize)
+
+    size_t bytes_read = fread(buffer, sizeof(*buffer), filesize, fileptr);
     fclose(fileptr);
-  }
-  free(buf);
-  return 0;
+
+    // [2]
+    // buffer[bytes_read] = '\0';
+
+    // example, simple cheap hexdump clone
+    for(size_t i = 0; i < bytes_read; ++i)
+        printf("%02x ", buffer[i]);
+
+    // [1]
+    // free(buffer);
+    putchar('\n');
+    return 0;
 }
