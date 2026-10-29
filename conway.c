@@ -20,7 +20,6 @@
     TODOS
         TODO BUG [5] slowing down simulation speed slows down everything else
         TODO FEATURE allow loading board from a WIDTHxHEIGHT .ppm image file
-        TODO    [2] maybe set width/height from loading the board ?
         TODO    [3] support ppms with maxval > 255
         TODO FEATURE windows(mingw) support
         TODO    [1] polling for windows (conio.h)
@@ -45,9 +44,6 @@
 #include <termios.h>        // tcgetattr(), tcsetattr()
 #include <unistd.h>         // usleep()
 
-// TODO [2]
-#define WIDTH       32
-#define HEIGHT      32
 #define INIT_FPS    15
 
 #if defined(NO_COLOR)
@@ -85,6 +81,8 @@
 #endif // NO_UTF8
 
 static bool running = true;
+static size_t WIDTH = 32;
+static size_t HEIGHT = 32;
 
 /* Helper functions */
 
@@ -123,8 +121,8 @@ size_t count_population(const bool board[])
 
 bool get_matrix_bc(const bool board[], const ssize_t x, const ssize_t y)    // get data from matrix, with bounds checking
 {
-    if(x < 0 || x >= WIDTH)  return false;
-    if(y < 0 || y >= HEIGHT) return false;
+    if(x < 0 || x >= (ssize_t)WIDTH)  return false;
+    if(y < 0 || y >= (ssize_t)HEIGHT) return false;
     return board[MATRIX_COORD(x,y)];
 }
 
@@ -154,7 +152,8 @@ void update_board(bool board[])
         4. Any dead cell with exactly three live neighbours becomes a live cell [...]
     */
 
-    bool new_board[WIDTH*HEIGHT] = {0};
+    bool new_board[WIDTH*HEIGHT];
+    memset(new_board, false, WIDTH*HEIGHT);
 
     for(size_t y = 0; y < HEIGHT; ++y) {
         for(size_t x = 0; x < WIDTH; ++x) {
@@ -248,31 +247,25 @@ int main(int argc, char* argv[])
         fprintf(stderr, "TODO  support maxval > 255\n");
         return 1;
     }
+    (void)getc(fileptr); // skip one byte, trust me while debugging this aligned the pixel RGB data correctly (TODO needs more investigation)
 
-    // TODO [2]
-    if((WIDTH != img_width) || (HEIGHT != img_height)) {
-        fprintf(stderr, ANSI_RED "'%zux%zu': incorrect size\n" ANSI_NORM, img_width, img_height);
-        return 1;
-    }
-
-    (void)getc(fileptr);
-    uint8_t* image_data = malloc(img_width * 3 * img_height);
-    if(image_data == NULL) {
-        fprintf(stderr, ANSI_RED "malloc() failed\n" ANSI_NORM);
-        return 1;
-    }
+    // allocating on the stack means an image <1MB, so 1000x1000 max
+    uint8_t image_data[img_width * 3 * img_height];
     fread(image_data, img_width * 3, img_height, fileptr);
     fclose(fileptr);
 
+    WIDTH  = img_width;
+    HEIGHT = img_height;
+
+    bool board[WIDTH*HEIGHT];
+    memset(board, false, WIDTH*HEIGHT);
+
     // TODO [3]
-    bool board[WIDTH*HEIGHT] = {false};
     for(size_t i = 0; i < (img_width * img_height); ++i) {
         if((image_data[i*3] == color_maxval) && (image_data[i*3+1] == color_maxval) && (image_data[i*3+2] == color_maxval)) {
             board[i] = true;
         }
     }
-
-    free(image_data);
 
     int fps = INIT_FPS;
     unsigned long generation = 1;
