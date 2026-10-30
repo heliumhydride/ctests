@@ -28,7 +28,6 @@
 #define _XOPEN_SOURCE 500   // usleep()
 #include <ctype.h>          // isspace()
 #include <stdbool.h>        // bool
-#include <stdlib.h>         // malloc(), free()
 #include <stdint.h>         // uint8_t
 #include <stdio.h>          // putchar(), printf(), fopen(), fread(), ...
 #include <string.h>         // memset()
@@ -44,7 +43,7 @@
 #include <termios.h>        // tcgetattr(), tcsetattr()
 #endif // _WIN32
 
-#define INIT_FPS    15
+#define INIT_FPS 8
 
 #if defined(NO_COLOR)
     #define ANSI_BLUE  ""
