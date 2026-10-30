@@ -12,7 +12,7 @@
         It doesn't work yet, but when it will:
         To use UTF-8 characters in the CMD, run:
             chcp 65001
-            ^^^ Could be buggy on Windows >=7 <10
+            ^^^ Seems to work on Win10 but not 8.1 from my testing
 
         Also you'll need a console host that supports ANSI escape codes.
         So either use ANSICON to extend the system conhost, or switch to ConEmu, Windows Terminal, ...
@@ -21,28 +21,28 @@
         TODO BUG [5] slowing down simulation speed slows down everything else
         TODO FEATURE allow loading board from a WIDTHxHEIGHT .ppm image file
         TODO    [3] support ppms with maxval > 255
-        TODO FEATURE windows(mingw) support
-        TODO    [1] polling for windows (conio.h)
-        TODO    [4] catch CTRL+C on windows
 
     made with ♡ by heliumhydride
 */
 
-#if defined(_WIN32) && !defined(__CYGWIN__)
-#error "TODO [1] [4]"
-#endif // _WIN32 && !__CYGWIN__
-
 #define _XOPEN_SOURCE 500   // usleep()
 #include <ctype.h>          // isspace()
-#include <poll.h>           // poll()
-#include <signal.h>         // signal()
 #include <stdbool.h>        // bool
 #include <stdlib.h>         // malloc(), free()
 #include <stdint.h>         // uint8_t
 #include <stdio.h>          // putchar(), printf(), fopen(), fread(), ...
 #include <string.h>         // memset()
-#include <termios.h>        // tcgetattr(), tcsetattr()
 #include <unistd.h>         // usleep()
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>        // BOOL, DWORD, SetConsoleCtrlHandler()
+#include <conio.h>          // _kbhit(), _getch()
+#else // On Unix
+#include <poll.h>           // poll()
+#include <signal.h>         // signal() (unix)
+#include <termios.h>        // tcgetattr(), tcsetattr()
+#endif // _WIN32
 
 #define INIT_FPS    15
 
@@ -57,6 +57,19 @@
 #endif // NO_COLOR
 
 #define MATRIX_COORD(x,y) ((y)*WIDTH + (x))
+
+#ifdef _WIN32
+// TODO what if we plan to catch arrow keys later on ?
+#define getch_buf(buf) (buf)[0] = _getch()
+#else // On Unix
+#define getch_buf(buf) read(STDIN_FILENO, (buf), sizeof((buf)))
+#endif // _WIN32
+
+#ifdef _WIN32
+#define pollkey() _kbhit()
+#else
+#define pollkey() poll(fds, 1, 0)
+#endif // _WIN32
 
 #if defined(NO_UTF8)
     #define UPPER_HALF_BLOCK   "^"
@@ -86,10 +99,19 @@ static size_t HEIGHT = 32;
 
 /* Helper functions */
 
-void ctrl_c(int unused) {
+#ifdef _WIN32
+BOOL ctrl_c(DWORD dwtype)
+{
+    if(dwtype == CTRL_C_EVENT) running = false;
+    return true;
+}
+#else // On Unix
+void ctrl_c(int unused)
+{
     (void)unused;
     running = false;
 }
+#endif // _WIN32
 
 void clear_screen(void)
 {
@@ -207,9 +229,15 @@ void print_usage(const char* program)
 
 int main(int argc, char* argv[])
 {
-    // TODO [4]
+    #ifdef _WIN32
+    if(!SetConsoleCtrlHandler((PHANDLER_ROUTINE)ctrl_c, true)) {
+        fputs("unable to install handler.", stderr);
+        return 1;
+    }
+    #else // On Unix
     signal(SIGINT, ctrl_c);
     signal(SIGTERM, ctrl_c);
+    #endif // _WIN32
 
     const char* program = argv[0];
     if(argc < 2) {
@@ -270,8 +298,9 @@ int main(int argc, char* argv[])
     int fps = INIT_FPS;
     unsigned long generation = 1;
 
-    /* the following code was stolen from myself (see 'cube.c') */
+    #ifndef _WIN32 // On Unix
 
+    /* the following code was stolen from myself (see 'cube.c') */
     struct termios old_tio, new_tio;
     tcgetattr(STDOUT_FILENO, &old_tio);
     new_tio = old_tio;
@@ -281,12 +310,13 @@ int main(int argc, char* argv[])
     struct pollfd fds[1];
     fds[0].fd = STDIN_FILENO;
     fds[0].events = POLLIN;
-
     /* end of code stolen from self */
+
+    #endif // !_WIN32
 
     running = true;
     while(running) {
-        int polled = poll(fds, 1, 0);
+        int polled = pollkey();
         if(polled == -1) {
             running = false;
         } else if(polled == 0) {
@@ -309,7 +339,7 @@ int main(int argc, char* argv[])
             ++generation;
         } else {
             char buf[3] = {0};
-            read(STDIN_FILENO, buf, sizeof(buf));
+            getch_buf(buf);
             switch(buf[0]) {
                 case '+':
                     ++fps;
@@ -328,14 +358,16 @@ int main(int argc, char* argv[])
                     printf(ANSI_RED "                   PAUSED\n" ANSI_NORM);
                     buf[0] = '\0';
                     while(buf[0] != ' ') {
-                        read(STDIN_FILENO, buf, sizeof(buf));
+                        getch_buf(buf);
                         usleep((useconds_t)1000);
                     }
                     break;
             }
         }
     }
+    #ifndef _WIN32 // On Unix
     tcsetattr(STDOUT_FILENO, TCSANOW, &old_tio);
+    #endif
     puts("\n            ok, goodbye.");
     return 0;
 }
